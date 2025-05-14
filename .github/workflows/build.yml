@@ -1,9 +1,6 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     paths:
       - 'esp-web-tools/**'
@@ -20,15 +17,16 @@ concurrency:
 jobs:
   build-esp-web-tools-firmware:
     name: ESP Web Tools
-    uses: esphome/workflows/.github/workflows/build.yml@main
+    uses: esphome/workflows/.github/workflows/build.yml@2025.4.0
     with:
       files: |
         esp-web-tools/esp32.yaml
         esp-web-tools/esp32c3.yaml
+        esp-web-tools/esp32c6.yaml
         esp-web-tools/esp32s2.yaml
         esp-web-tools/esp32s3.yaml
         esp-web-tools/esp8266.yaml
-      esphome-version: 2024.7.3
+      esphome-version: 2025.4.0
       combined-name: esp-web-tools
       release-summary: ${{ github.event_name == 'release' && github.event.release.body || '' }}
       release-url: ${{ github.event_name == 'release' && github.event.release.html_url || '' }}
@@ -36,29 +34,53 @@ jobs:
 
   build-esphome-web-firmware:
     name: ESPHome Web
-    uses: esphome/workflows/.github/workflows/build.yml@main
+    uses: esphome/workflows/.github/workflows/build.yml@2025.4.0
     with:
       files: |
-        esphome-web/esp32.yaml
-        esphome-web/esp32c3.yaml
-        esphome-web/esp32s2.yaml
-        esphome-web/esp32s3.yaml
-        esphome-web/esp8266.yaml
-        esphome-web/pico-w.yaml
-      esphome-version: 2024.7.3
+        esphome-web/esp32.factory.yaml
+        esphome-web/esp32c3.factory.yaml
+        esphome-web/esp32c6.factory.yaml
+        esphome-web/esp32s2.factory.yaml
+        esphome-web/esp32s3.factory.yaml
+        esphome-web/esp8266.factory.yaml
+        esphome-web/pico-w.factory.yaml
+      esphome-version: 2025.4.0
       combined-name: esphome-web
       release-summary: ${{ github.event_name == 'release' && github.event.release.body || '' }}
       release-url: ${{ github.event_name == 'release' && github.event.release.html_url || '' }}
       release-version: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
-  upload:
+  upload-to-r2:
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     name: Upload to R2
     needs:
       - build-esp-web-tools-firmware
       - build-esphome-web-firmware
-    uses: esphome/workflows/.github/workflows/upload.yml@main
+    uses: esphome/workflows/.github/workflows/upload-to-r2.yml@2025.4.0
     with:
       directory: "."
-      version: ${{ needs.build-esp-web-tools-firmware.outputs.version }}
+    secrets: inherit
+
+  upload-to-release:
+    if: github.event_name == 'release'
+    name: Upload to Release
+    needs:
+      - build-esp-web-tools-firmware
+      - build-esphome-web-firmware
+    uses: esphome/workflows/.github/workflows/upload-to-gh-release.yml@2025.4.0
+    with:
+      version: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  promote:
+    name: Promote esp-web-tools to Production
+    if: github.event_name == 'release' && github.event.release.prerelease == false
+    uses: esphome/workflows/.github/workflows/promote-r2.yml@2025.4.0
+    needs:
+      - upload-to-r2
+    with:
+      version: ${{ github.event.release.tag_name }}
+      directory: "."
+      channel: production
+      manifest-filename: manifest.json
     secrets: inherit
